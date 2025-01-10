@@ -10,11 +10,12 @@ from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core import security
 from app.core.config import settings
 from app.core.security import get_password_hash
-from app.models import Token, UserPublic, Message
+from app.models import Token, UserPublic, Message, NewPassword
 from app.utils import (
-    generate_reset_password_token,
+    generate_password_rest_token,
     generate_reset_password_email,
     send_email,
+    verify_password_reset_token
 )
 
 
@@ -36,7 +37,8 @@ def login_access_token(
     return Token(
         access_token=security.create_access_token(
             user.id, expires_delta=access_token_expires
-        )
+        ),
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 
 
@@ -64,7 +66,7 @@ def recover_password(email: str, session: SessionDep) -> Message:
             status_code=404,
             detail="The user with this email does not exist in the system.",
         )
-    password_reset_token = generate_reset_password_token(email=email)
+    password_reset_token = generate_password_rest_token(email=email)
     email_data = generate_reset_password_email(
         email_to=user.email, email=email, token=password_reset_token
     )
@@ -74,6 +76,27 @@ def recover_password(email: str, session: SessionDep) -> Message:
         html_cotent=email_data.html_content,
     )
     return Message(message="Password recovery email sent")
+
+
+@router.post("/reset-password/")
+def reset_password(session: SessionDep, body: NewPassword) -> Message:
+    email = verify_password_reset_token(token=body.token)
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid token")
+    user = crud.get_user_by_email(session=session, email=email)
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="The user with this email does not exist in the system.",
+        )
+    elif not user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    hashed_password = get_password_hash(password=body.new_password)
+    user.hashed_password = hashed_password
+    session.add(user)
+    session.commit()
+    return Message(message="Password updated successfully")
+
 
 @router.post(
     "/password-recovery-html-content/{email}",
@@ -89,7 +112,7 @@ def recover_password_html_content(email: str, session: SessionDep) -> Any:
             status_code=404,
             detail="The user with this email does not exist in the system.",
         )
-    password_reset_token = generate_reset_password_token(email=email)
+    password_reset_token = generate_password_rest_token(email=email)
     email_data = generate_reset_password_email(
         email_to=user.email, email=email, token=password_reset_token
     )

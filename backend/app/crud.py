@@ -4,7 +4,7 @@ from typing import Any
 from sqlmodel import Session, select
 
 from app.core.security import get_password_hash, verify_password
-from app.models import User, UserCreate, UserUpdate
+from app.models import User, UserCreate, UserUpdate, DetectHistoryCreate, DetectHistory
 
 
 def create_user(*, session: Session, user_create: UserCreate) -> User:
@@ -44,3 +44,15 @@ def authenticate(*, session: Session, email: str, password: str) -> User | None:
     if not verify_password(password, db_user.hashed_password):
         return None
     return db_user
+
+
+def create_detect_history(
+    *, session: Session, detect_history_in: DetectHistoryCreate, owner_id: uuid.UUID
+) -> DetectHistory:
+    db_obj = DetectHistory.model_validate(
+        detect_history_in, update={"owner_id": owner_id}
+    )
+    session.add(db_obj)
+    session.commit()
+    session.refresh(db_obj)
+    return db_obj

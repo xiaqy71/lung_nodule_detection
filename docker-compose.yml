@@ -19,6 +19,26 @@ services:
       - MYSQL_PASSWORD=${MYSQL_PASSWORD?Variable not set}
     ports:
       - "3306:3306"
+  minio:
+    image: minio/minio
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001" # for minio console
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY?Variable not set}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY?Variable not set}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+    restart: unless-stopped
 
 volumes:
   app-db-data:
+  minio-data:
